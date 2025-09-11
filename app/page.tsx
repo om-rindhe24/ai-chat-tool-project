@@ -173,7 +173,7 @@ export default function ChatPage() {
               <Bot />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">AI Chat</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">OM AI-CHATBOX</h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">Powered by Gemini 2.5 Flash</p>
             </div>
           </div>
@@ -194,7 +194,7 @@ export default function ChatPage() {
                   <Bot />
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Welcome to AI Chat</h2>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Welcome to OM AI-CHATBOX</h2>
                   <p className="text-gray-600 dark:text-gray-400 max-w-md mb-6">
                     Start a conversation with our AI assistant. Ask questions, get help, or just chat!
                   </p>
