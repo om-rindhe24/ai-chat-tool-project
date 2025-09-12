@@ -114,6 +114,9 @@ export default function ChatPage() {
     setStreamingContent("")
     setIsStreaming(true)
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+
     try {
       console.log("[v0] Sending message to API")
 
@@ -128,15 +131,23 @@ export default function ChatPage() {
             content: m.content,
           })),
         }),
+        signal: controller.signal, // Added abort signal for timeout handling
       })
 
+      clearTimeout(timeoutId) // Clear timeout if request succeeds
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
       }
 
       console.log("[v0] Got response, starting to read stream")
 
       const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("No response body reader available")
+      }
+
       const decoder = new TextDecoder()
 
       const assistantMessage: Message = {
@@ -149,13 +160,25 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, assistantMessage])
 
-      if (reader) {
-        let fullContent = ""
+      let fullContent = ""
+      let lastUpdateTime = Date.now()
 
+      const streamTimeoutId = setInterval(() => {
+        if (Date.now() - lastUpdateTime > 10000) {
+          // 10 seconds without data
+          console.log("[v0] Stream timeout detected")
+          reader.cancel()
+          clearInterval(streamTimeoutId)
+        }
+      }, 1000)
+
+      try {
         while (true) {
           const { done, value } = await reader.read()
+
           if (done) {
             console.log("[v0] Stream reading completed")
+            clearInterval(streamTimeoutId) // Clear stream timeout
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantMessage.id ? { ...msg, content: fullContent, isTyping: false } : msg,
@@ -167,6 +190,7 @@ export default function ChatPage() {
 
           const chunk = decoder.decode(value, { stream: true })
           fullContent += chunk
+          lastUpdateTime = Date.now() // Update last activity time
 
           console.log("[v0] Received chunk:", chunk)
 
@@ -175,14 +199,28 @@ export default function ChatPage() {
             prev.map((msg) => (msg.id === assistantMessage.id ? { ...msg, content: fullContent } : msg)),
           )
         }
+      } catch (streamError) {
+        clearInterval(streamTimeoutId)
+        throw streamError
       }
     } catch (error) {
+      clearTimeout(timeoutId) // Ensure timeout is cleared on error
       console.error("[v0] Error in sendMessage:", error)
+
+      let errorMessage = "Sorry, I encountered an error. Please try again."
+      if (error.name === "AbortError") {
+        errorMessage = "Request timed out. Please try again with a shorter message."
+      } else if (error.message.includes("Failed to fetch")) {
+        errorMessage = "Network error. Please check your connection and try again."
+      } else if (error.message.includes("HTTP error")) {
+        errorMessage = "Server error. Please try again in a moment."
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
-          content: "Sorry, I encountered an error. Please try again.",
+          content: errorMessage,
           role: "assistant",
           timestamp: new Date(),
         },

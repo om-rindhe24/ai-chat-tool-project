@@ -17,6 +17,11 @@ export async function POST(req: Request) {
 
     const validMessages = messages.filter((message: any) => message.content && message.content.trim().length > 0)
 
+    if (validMessages.length === 0) {
+      console.log("[v0] No valid messages found")
+      return new Response("No valid messages provided", { status: 400 })
+    }
+
     console.log("[v0] About to call streamText with Gemini")
     console.log("[v0] Valid messages:", JSON.stringify(validMessages, null, 2))
 
@@ -28,6 +33,7 @@ export async function POST(req: Request) {
       If you're unsure about something, acknowledge it honestly.`,
       maxTokens: 1000,
       temperature: 0.7,
+      abortSignal: AbortSignal.timeout(25000), // 25 second timeout
     })
 
     console.log("[v0] streamText completed, returning stream response")
@@ -35,6 +41,11 @@ export async function POST(req: Request) {
     return result.toTextStreamResponse()
   } catch (error) {
     console.error("[v0] Chat API error:", error)
+
+    if (error.name === "AbortError") {
+      return new Response("Request timeout - please try again", { status: 408 })
+    }
+
     return new Response(`Internal server error: ${error.message}`, { status: 500 })
   }
 }
