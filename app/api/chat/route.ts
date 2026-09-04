@@ -22,9 +22,10 @@ function isChatMessage(value: unknown): value is ChatMessage {
 
 export async function POST(request: Request) {
   try {
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
+
     if (!apiKey) {
-      return new Response("Gemini API key is not configured on the server", { status: 503 })
+      return new Response("Gemini is unavailable because the server runtime has no configured API key", { status: 503 })
     }
 
     const body = (await request.json()) as { messages?: unknown }
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
       return new Response("No valid messages provided", { status: 400 })
     }
 
+    console.log("[v0] Gemini request starting")
     const result = streamText({
       model: createGoogleGenerativeAI({ apiKey })("gemini-2.5-flash"),
       system: systemPrompt,
@@ -42,8 +44,11 @@ export async function POST(request: Request) {
       temperature: 0.7,
       abortSignal: AbortSignal.timeout(25000),
       onError: ({ error }) => {
+        console.error("[v0] Gemini stream error:", error instanceof Error ? error.message : String(error))
       },
     })
+
+    console.log("[v0] Gemini stream created")
 
     return result.toTextStreamResponse()
   } catch (error) {

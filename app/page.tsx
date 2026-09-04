@@ -210,8 +210,8 @@ export default function ChatPage() {
         errorMessage = "Request timed out. Please try again with a shorter message."
       } else if (errorDetails.includes("Failed to fetch")) {
         errorMessage = "Network error. Please check your connection and try again."
-      } else if (errorDetails.includes("Gemini API key is not configured")) {
-        errorMessage = "Gemini is not configured for this deployment. Add GOOGLE_GENERATIVE_AI_API_KEY to the Preview environment and redeploy."
+      } else if (errorDetails.includes("Gemini is unavailable") || errorDetails.includes("server runtime")) {
+        errorMessage = "Gemini is unavailable in the server runtime. Please try again after the deployment finishes updating."
       } else if (errorDetails.includes("HTTP error")) {
         errorMessage = errorDetails.split("message: ")[1] || "Server error. Please try again in a moment."
       }
