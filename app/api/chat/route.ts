@@ -1,51 +1,58 @@
-import { streamText } from "ai"
 import { google } from "@ai-sdk/google"
+import { streamText } from "ai"
 
-export async function POST(req: Request) {
+const systemPrompt = `You are a helpful, friendly AI assistant. You provide clear, accurate, and helpful responses.
+Keep your responses conversational and engaging while being informative.
+If you're unsure about something, acknowledge it honestly.`
+
+type ChatMessage = {
+  role: "user" | "assistant" | "system"
+  content: string
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  if (!value || typeof value !== "object") return false
+
+  const message = value as Partial<ChatMessage>
+  return (
+    (message.role === "user" || message.role === "assistant" || message.role === "system") &&
+    typeof message.content === "string" &&
+    message.content.trim().length > 0
+  )
+}
+
+export async function POST(request: Request) {
   try {
-    console.log("[v0] API route called")
+    const body = (await request.json()) as { messages?: unknown }
+    const messages = Array.isArray(body.messages) ? body.messages.filter(isChatMessage) : []
 
-    const { messages } = await req.json()
-
-    console.log("[v0] Messages received:", messages?.length || 0)
-
-    // Validate messages
-    if (!messages || !Array.isArray(messages)) {
-      console.log("[v0] Invalid messages format")
-      return new Response("Invalid messages format", { status: 400 })
-    }
-
-    const validMessages = messages.filter((message: any) => message.content && message.content.trim().length > 0)
-
-    if (validMessages.length === 0) {
-      console.log("[v0] No valid messages found")
+    if (messages.length === 0) {
       return new Response("No valid messages provided", { status: 400 })
     }
 
-    console.log("[v0] About to call streamText with Gemini")
-    console.log("[v0] Valid messages:", JSON.stringify(validMessages, null, 2))
-
-    const result = await streamText({
-      model: google("gemini-1.5-flash"),
-      messages: validMessages,
-      system: `You are a helpful, friendly AI assistant. You provide clear, accurate, and helpful responses. 
-      Keep your responses conversational and engaging while being informative. 
-      If you're unsure about something, acknowledge it honestly.`,
-      maxTokens: 1000,
+    const result = streamText({
+      model: google("gemini-2.5-flash", {
+        apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+      }),
+      system: systemPrompt,
+      messages,
+      maxOutputTokens: 1000,
       temperature: 0.7,
-      abortSignal: AbortSignal.timeout(25000), // 25 second timeout
+      abortSignal: AbortSignal.timeout(25000),
     })
-
-    console.log("[v0] streamText completed, returning stream response")
 
     return result.toTextStreamResponse()
   } catch (error) {
     console.error("[v0] Chat API error:", error)
 
-    if (error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError") {
       return new Response("Request timeout - please try again", { status: 408 })
     }
 
-    return new Response(`Internal server error: ${error.message}`, { status: 500 })
+    if (error instanceof SyntaxError) {
+      return new Response("Invalid request body", { status: 400 })
+    }
+
+    return new Response("Unable to generate a response right now", { status: 500 })
   }
 }
