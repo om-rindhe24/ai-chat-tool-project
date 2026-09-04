@@ -22,6 +22,7 @@ function isChatMessage(value: unknown): value is ChatMessage {
 
 export async function POST(request: Request) {
   try {
+
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
 
     if (!apiKey) {
