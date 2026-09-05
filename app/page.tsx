@@ -150,24 +150,14 @@ export default function ChatPage() {
 
       const decoder = new TextDecoder()
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "",
-        role: "assistant",
-        timestamp: new Date(),
-        isTyping: true,
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-
       let fullContent = ""
+      let assistantMessageId: string | null = null
       let lastUpdateTime = Date.now()
 
       const streamTimeoutId = setInterval(() => {
         if (Date.now() - lastUpdateTime > 10000) {
-          // 10 seconds without data
           console.log("[v0] Stream timeout detected")
-          reader.cancel()
+          void reader.cancel()
           clearInterval(streamTimeoutId)
         }
       }, 1000)
@@ -175,45 +165,55 @@ export default function ChatPage() {
       try {
         while (true) {
           const { done, value } = await reader.read()
-
+          const chunk = value ? decoder.decode(value, { stream: !done }) : ""
+          if (chunk) {
+            fullContent += chunk
+            lastUpdateTime = Date.now()
+            if (!assistantMessageId) {
+              assistantMessageId = `${Date.now()}-assistant`
+              setMessages((prev) => [
+                ...prev,
+                { id: assistantMessageId!, content: fullContent, role: "assistant", timestamp: new Date(), isTyping: true },
+              ])
+            } else {
+              setMessages((prev) =>
+                prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: fullContent } : msg)),
+              )
+            }
+            setStreamingContent(fullContent)
+          }
           if (done) {
-            console.log("[v0] Stream reading completed")
-            clearInterval(streamTimeoutId) // Clear stream timeout
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessage.id ? { ...msg, content: fullContent, isTyping: false } : msg,
-              ),
-            )
+            console.log("[v0] Stream reading completed; characters received:", fullContent.length)
+            clearInterval(streamTimeoutId)
+            if (assistantMessageId) {
+              setMessages((prev) =>
+                prev.map((msg) => (msg.id === assistantMessageId ? { ...msg, content: fullContent, isTyping: false } : msg)),
+              )
+            }
+            if (!fullContent) throw new Error("The server returned an empty response")
             setIsStreaming(false)
             break
           }
-
-          const chunk = decoder.decode(value, { stream: true })
-          fullContent += chunk
-          lastUpdateTime = Date.now() // Update last activity time
-
-          console.log("[v0] Received chunk:", chunk)
-
-          setStreamingContent(fullContent)
-          setMessages((prev) =>
-            prev.map((msg) => (msg.id === assistantMessage.id ? { ...msg, content: fullContent } : msg)),
-          )
         }
       } catch (streamError) {
         clearInterval(streamTimeoutId)
         throw streamError
       }
-    } catch (error) {
+    } catch (error: unknown) {
       clearTimeout(timeoutId) // Ensure timeout is cleared on error
       console.error("[v0] Error in sendMessage:", error)
 
+      const errorName = error instanceof Error ? error.name : ""
+      const errorDetails = error instanceof Error ? error.message : String(error)
       let errorMessage = "Sorry, I encountered an error. Please try again."
-      if (error.name === "AbortError") {
+      if (errorName === "AbortError") {
         errorMessage = "Request timed out. Please try again with a shorter message."
-      } else if (error.message.includes("Failed to fetch")) {
+      } else if (errorDetails.includes("Failed to fetch")) {
         errorMessage = "Network error. Please check your connection and try again."
-      } else if (error.message.includes("HTTP error")) {
-        errorMessage = "Server error. Please try again in a moment."
+      } else if (errorDetails.includes("Gemini is unavailable") || errorDetails.includes("server runtime")) {
+        errorMessage = "Gemini is unavailable in the server runtime. Please try again after the deployment finishes updating."
+      } else if (errorDetails.includes("HTTP error")) {
+        errorMessage = errorDetails.split("message: ")[1] || "Server error. Please try again in a moment."
       }
 
       setMessages((prev) => [
